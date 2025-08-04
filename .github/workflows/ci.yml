@@ -1,0 +1,84 @@
+# 1. Define The Trigger
+name: Backend CI # Define the name of the CI workflow, showed on Github Action
+
+on: # Define the event that triggers the workflow
+  push:  # Trigger the workflow on a push event
+    branches: # Specify the branches to monitor
+      - main  # Trigger CI on pushes to the main branch
+
+# 2. Define The Jobs
+jobs:  # Define the jobs that will run in this workflow
+  test: # Job name (test job)
+    # 3. Define a Job Name, Environment, Clone Repository to Runner  
+    name: Run Tests # Display name for the job
+    runs-on: self-hosted # Specify the runner (self-hosted machine) to execute the job
+
+    strategy: # Define a strategy for running the job
+      matrix: # se a matrix to run the job in multiple environments
+        node-version: [22] # Test on multiple Node.js versions
+
+
+    environment: MONGO_URI
+
+    steps: # Define the sequence of steps to be executed in this job
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 4. Set up Node.js
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    # 5. Print Environment Secrets
+    - name: Print Env Secret
+
+      env:
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        PORT: ${{ secrets.PORT }}
+      run: | 
+        echo "Secret 1 is: $MONGO_URI"
+        echo "Secret 2 is: $JWT_SECRET"
+        echo "Secret 3 is: $PORT"
+    # 6. Stop Running Services in AWS 
+    - run: pm2 stop all
+
+    # 7. Install dependencies for backend
+    - name: Install Backend Dependencies
+      working-directory: ./backend
+      run: | 
+       npm install --global yarn
+       yarn --version
+       yarn install
+      
+    # 8. Install dependencies for frontend
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: |
+        df -h
+        sudo rm -rf ./build
+        yarn install
+        yarn run build
+
+
+    # 9. Run backend tests
+    - name: Run Backend Tests
+      env:
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        PORT: ${{ secrets.PORT }}
+      working-directory: ./backend
+      run: npm test
+
+    # 10. Install Dependencies Using npm ci
+    - run: npm ci
+    # 11. Create .env File and Add Secrets for Production in AWS (A part of CD)
+    - run: | 
+        cd ./backend
+        touch .env
+        echo "${{ secrets.PROD }}" > .env
+    # 12. Start and Restart Services in AWS (A part of CD)
+    - run: pm2 start all
+
+    - run: pm2 restart all
